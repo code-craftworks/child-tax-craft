@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>자녀 증여세 관리 · child-gift-bench</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#F5F5F3;color:#18181B;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Apple SD Gothic Neo',Pretendard,sans-serif;font-size:14px;line-height:1.5}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:#F5F5F3}
+::-webkit-scrollbar-thumb{background:#D1D5DB;border-radius:3px}
+input[type=text],input[type=number]{
+  background:#fff;border:1.5px solid #E5E7EB;border-radius:8px;
+  color:#18181B;font-size:13px;outline:none;padding:10px 11px;
+  transition:border-color .15s,box-shadow .15s;font-family:inherit;width:100%;
+}
+input[type=text]:focus,input[type=number]:focus{
+  border-color:#1E40AF;box-shadow:0 0 0 3px rgba(30,64,175,.1);
+}
+input[type=number]::-webkit-inner-spin-button{opacity:1;cursor:pointer;width:20px}
+input[type=number]::-webkit-outer-spin-button{opacity:1}
+button{cursor:pointer;font-family:inherit}
+.card{background:#fff;border:1px solid #E5E7EB;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.lbl{font-size:11px;font-weight:700;color:#A1A1AA;text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:10px}
+.field-label{font-size:12px;font-weight:600;color:#71717A;margin-bottom:5px;display:block}
+.btn-sm{padding:6px 12px;border-radius:8px;border:1.5px solid #E5E7EB;background:#F5F5F3;color:#1E40AF;font-size:11px;font-weight:700;white-space:nowrap;line-height:1}
+.btn-sm:hover{background:#EFF6FF;border-color:#BFDBFE}
+.dig{display:flex;align-items:center;background:#fff;border:1.5px solid #E5E7EB;border-radius:8px;padding:7px 10px;min-height:46px;transition:border-color .15s,box-shadow .15s;width:100%}
+.dig:focus-within{border-color:#1E40AF;box-shadow:0 0 0 3px rgba(30,64,175,.1)}
+.dig input[type=number]::-webkit-inner-spin-button{opacity:1;cursor:pointer;width:20px}
+.dig input[type=number]::-webkit-outer-spin-button{opacity:1}
+.tab-bar{display:flex;align-items:center;gap:5px;margin-bottom:10px;flex-wrap:wrap}
+.tab-btn{padding:7px 15px;border-radius:20px;border:1.5px solid #E5E7EB;background:#F0F0EE;color:#71717A;font-size:12px;font-weight:600;white-space:nowrap;line-height:1.3;transition:all .1s;display:inline-flex;align-items:center;gap:5px}
+.tab-btn.active{background:#EFF6FF;color:#1E40AF;border-color:#93C5FD}
+.tab-btn:not(.active):hover{background:#E6E6E4;border-color:#D1D5DB}
+.tab-x{color:#A1A1AA;font-size:15px;font-weight:400;line-height:1;border:none;background:none;padding:0 1px;cursor:pointer;flex-shrink:0}
+.tab-x:hover{color:#DC2626}
+.tab-add{padding:6px 14px;border-radius:20px;border:1.5px dashed #D1D5DB;background:transparent;color:#A1A1AA;font-size:16px;font-weight:700;line-height:1;transition:all .1s}
+.tab-add:hover{border-color:#1E40AF;color:#1E40AF;background:#EFF6FF}
+#app{max-width:980px;margin:0 auto;padding:28px 20px 48px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+'use strict';
+
+// ── 상수 ──────────────────────────────────────────────────────
+var VB_W=940,CL=90,PR=18,CW=VB_W-CL-PR;
+var RH=54,BH=32,BT=Math.floor((RH-BH)/2),HH=74;
+var SNAP_PX=15;
+var SKEY='cgb-v2';
+
+// ── 상태 ──────────────────────────────────────────────────────
+var chartYS=2014,chartYE=2042;
+var simDate='2026-06-21';
+var fontZoom=1.0;
+var children=[
+  {
+    id:uid(),
+    name:'자녀 1',
+    birthDate:'2010-04-05',
+    specialEvents:{marriage:null,birth:null},
+    gifts:[
+      {id:uid(),title:'부모 1차 증여',  date:'2016-03-15',amount:1000},
+      {id:uid(),title:'할아버지 증여',  date:'2019-11-01',amount:2000},
+      {id:uid(),title:'부모 2차 증여',  date:'2021-06-10',amount:1500},
+      {id:uid(),title:'할머니 증여',    date:'2024-02-20',amount:800},
+      {id:uid(),title:'미래 예정 증여', date:'2028-09-01',amount:2000},
+    ]
+  }
+];
+var activeChildIdx=0;
+function C(){return children[activeChildIdx];}
+var form={title:'',date:'',amount:''};
+var dragging=false;
+
+// ── 헬퍼 ──────────────────────────────────────────────────────
+function mss(){return +new Date(chartYS+'-01-01');}
+function mse(){return +new Date(chartYE+'-01-01');}
+function toX(d){return CL+Math.max(0,Math.min(1,(+new Date(d)-mss())/(mse()-mss())))*CW;}
+function addY(d,y){var t=new Date(d);t.setFullYear(t.getFullYear()+y);return t.toISOString().slice(0,10);}
+function man(v){return v.toLocaleString('ko-KR')+'만';}
+function full(v){return v.toLocaleString('ko-KR')+'만 원';}
+function uid(){return '_'+Math.random().toString(36).slice(2,9);}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function todayStr(){return new Date().toISOString().slice(0,10);}
+function dateToDays(d){return Math.round(+new Date(d)/86400000);}
+function daysToDate(n){return new Date(n*86400000).toISOString().slice(0,10);}
+function clampDays(n){
+  var mn=dateToDays(chartYS+'-01-01'),mx=dateToDays(chartYE+'-01-01')-1;
+  return daysToDate(Math.max(mn,Math.min(mx,n)));
+}
+function isValidDate(val,minY,maxY){
+  if(!val||val.length!==10)return false;
+  var y=parseInt(val.slice(0,4),10);
+  return !isNaN(y)&&y>=minY&&y<=maxY&&!isNaN(new Date(val).getTime());
+}
+function calcAge(bd,asOf){
+  if(!bd||!asOf)return null;
+  var b=new Date(bd),a=new Date(asOf);
+  var age=a.getFullYear()-b.getFullYear();
+  if(a.getMonth()<b.getMonth()||(a.getMonth()===b.getMonth()&&a.getDate()<b.getDate()))age--;
+  return age;
+}
+function calcAgeAtJan1(y){
+  var bd=C().birthDate;
+  if(!bd)return null;
+  var b=new Date(bd);
+  var age=y-b.getFullYear();
+  if(b.getMonth()>0||b.getDate()>1)age--;
+  return age;
+}
+function adultDate(){
+  var bd=C().birthDate;
+  if(!bd)return null;
+  var b=new Date(bd),ad=new Date(b);
+  ad.setFullYear(b.getFullYear()+19);
+  return ad.toISOString().slice(0,10);
+}
+
+// ── 세금 엔진 ──────────────────────────────────────────────────
+function getRegularLimit(){
+  var age=calcAge(C().birthDate,simDate);
+  return (age!==null&&age>=19)?5000:2000;
+}
+function isMinorNow(){
+  var age=calcAge(C().birthDate,simDate);
+  return age===null||age<19;
+}
+function isInSpecialWindow(g){
+  return !!(g&&(g.eventType==='marriage'||g.eventType==='birth'));
+}
+function getSpecialBonus(){
+  if(isMinorNow())return 0;
+  var ws=addY(simDate,-10);
+  var marAmt=0,birAmt=0;
+  var me=C().specialEvents.marriage;
+  if(me&&me.date&&me.amount>0&&isValidDate(me.date,1990,2060)&&me.date>=ws&&me.date<=simDate)
+    marAmt=me.amount;
+  var be=C().specialEvents.birth;
+  if(be&&be.date&&be.amount>0&&isValidDate(be.date,1990,2060)&&
+     be.date>='2024-01-01'&&simDate>=be.date&&simDate<=addY(be.date,2))
+    birAmt=be.amount;
+  return Math.min(marAmt+birAmt,10000);
+}
+
+// ── 주요 날짜 & 자석 스냅 ──────────────────────────────────────
+function getKeyDates(){
+  var kd=[];
+  var ad=adultDate();
+  if(ad)kd.push({date:ad,type:'adult',label:'성년 전환',amount:0});
+  var gs=C().gifts;
+  for(var i=0;i<gs.length;i++){
+    var g=gs[i];
+    var ex=new Date(addY(g.date,10));
+    ex.setDate(ex.getDate()+1);
+    kd.push({date:ex.toISOString().slice(0,10),type:'expiry',label:g.title,amount:g.amount});
+  }
+  var me=C().specialEvents.marriage,be=C().specialEvents.birth;
+  if(me&&me.date&&isValidDate(me.date,1990,2060))
+    kd.push({date:me.date,type:'marriage',label:'혼인신고일',amount:0});
+  if(be&&be.date&&isValidDate(be.date,1990,2060))
+    kd.push({date:be.date,type:'birth',label:'출생(입양)일',amount:0});
+  return kd;
+}
+function snapToKeyDate(dateStr){
+  var x=toX(dateStr),kd=getKeyDates(),best=null,bestD=SNAP_PX+1;
+  for(var i=0;i<kd.length;i++){
+    var dist=Math.abs(toX(kd[i].date)-x);
+    if(dist<bestD){bestD=dist;best=kd[i].date;}
+  }
+  return best||dateStr;
+}
+
+// ── 영속성 ────────────────────────────────────────────────────
+function saveState(){
+  try{localStorage.setItem(SKEY,JSON.stringify({
+    chartYS:chartYS,chartYE:chartYE,simDate:simDate,fontZoom:fontZoom,
+    children:children,activeChildIdx:activeChildIdx
+  }));}catch(e){}
+}
+function loadState(){
+  try{
+    var raw=localStorage.getItem(SKEY);
+    if(!raw){
+      // v1 마이그레이션
+      var raw1=localStorage.getItem('cgb-v1');
+      if(!raw1)return;
+      var s1=JSON.parse(raw1);
+      if(s1.chartYS>=1990&&s1.chartYS<=2025)chartYS=s1.chartYS;
+      if(s1.chartYE>=2030&&s1.chartYE<=2060)chartYE=s1.chartYE;
+      if(isValidDate(s1.simDate,1990,2060))simDate=s1.simDate;
+      if(typeof s1.fontZoom==='number'&&s1.fontZoom>=0.7&&s1.fontZoom<=1.5)fontZoom=s1.fontZoom;
+      var c0=children[0];
+      if(isValidDate(s1.birthDate,1940,2025))c0.birthDate=s1.birthDate;
+      if(s1.specialEvents){
+        var sm1=s1.specialEvents.marriage,sb1=s1.specialEvents.birth;
+        if(sm1&&isValidDate(sm1.date,1990,2060)&&typeof sm1.amount==='number')c0.specialEvents.marriage=sm1;
+        else if(isValidDate(sm1,1990,2060))c0.specialEvents.marriage={date:sm1,amount:0};
+        if(sb1&&isValidDate(sb1.date,1990,2060)&&typeof sb1.amount==='number')c0.specialEvents.birth=sb1;
+        else if(isValidDate(sb1,1990,2060))c0.specialEvents.birth={date:sb1,amount:0};
+      }
+      if(Array.isArray(s1.gifts)&&s1.gifts.length>0){
+        var ok1=s1.gifts.filter(function(g){return g.id&&g.title&&g.date&&typeof g.amount==='number'&&g.amount>0;});
+        if(ok1.length)c0.gifts=ok1;
+      }
+      saveState();
+      return;
+    }
+    var s=JSON.parse(raw);
+    if(s.chartYS>=1990&&s.chartYS<=2025)chartYS=s.chartYS;
+    if(s.chartYE>=2030&&s.chartYE<=2060)chartYE=s.chartYE;
+    if(isValidDate(s.simDate,1990,2060))simDate=s.simDate;
+    if(typeof s.fontZoom==='number'&&s.fontZoom>=0.7&&s.fontZoom<=1.5)fontZoom=s.fontZoom;
+    if(Array.isArray(s.children)&&s.children.length>0){
+      var loaded=[];
+      for(var ci=0;ci<s.children.length;ci++){
+        var sc=s.children[ci];
+        if(!sc)continue;
+        var nc={
+          id:sc.id||uid(),
+          name:sc.name||('자녀 '+(ci+1)),
+          birthDate:isValidDate(sc.birthDate,1940,2025)?sc.birthDate:'',
+          specialEvents:{marriage:null,birth:null},
+          gifts:[]
+        };
+        if(sc.specialEvents){
+          var sm=sc.specialEvents.marriage,sb=sc.specialEvents.birth;
+          if(sm&&isValidDate(sm.date,1990,2060)&&typeof sm.amount==='number')nc.specialEvents.marriage=sm;
+          if(sb&&isValidDate(sb.date,1990,2060)&&typeof sb.amount==='number')nc.specialEvents.birth=sb;
+        }
+        if(Array.isArray(sc.gifts)){
+          nc.gifts=sc.gifts.filter(function(g){return g.id&&g.title&&g.date&&typeof g.amount==='number'&&g.amount>0;});
+        }
+        loaded.push(nc);
+      }
+      if(loaded.length)children=loaded;
+    }
+    if(typeof s.activeChildIdx==='number'&&s.activeChildIdx>=0&&s.activeChildIdx<children.length)
+      activeChildIdx=s.activeChildIdx;
+  }catch(e){}
+}
+
+// ── 파생 ──────────────────────────────────────────────────────
+function derive(){
+  var allGifts=C().gifts.slice();
+  var me=C().specialEvents.marriage,be=C().specialEvents.birth;
+  if(me&&me.date&&me.amount>0&&isValidDate(me.date,1990,2060))
+    allGifts.push({id:'_mar',title:'혼인 공제 증여',date:me.date,amount:me.amount,eventType:'marriage'});
+  var birEligible=be&&be.date&&be.amount>0&&isValidDate(be.date,1990,2060)&&
+    be.date>='2024-01-01'&&simDate>=be.date&&simDate<=addY(be.date,2);
+  if(birEligible)
+    allGifts.push({id:'_bir',title:'출산(입양) 공제 증여',date:be.date,amount:be.amount,eventType:'birth'});
+
+  var sorted=allGifts.slice().sort(function(a,b){return a.date<b.date?-1:1;});
+  var ws=addY(simDate,-10);
+  var tx=toX(simDate),wx=toX(ws);
+  function st(g){return g.date>simDate?'future':g.date<ws?'expired':'active';}
+  var active=sorted.filter(function(g){return st(g)==='active';});
+  var expired=sorted.filter(function(g){return st(g)==='expired';});
+  var asum=active.reduce(function(s,g){return s+g.amount;},0);
+  var bonus=getSpecialBonus();
+  var regularLimit=getRegularLimit();
+  var limit=regularLimit+bonus;
+  var rem=Math.max(0,limit-asum);
+  var over=asum>limit;
+  var pct=Math.min(100,(asum/limit)*100);
+  var svgH=HH+sorted.length*RH+30;
+  var marBonusApplied=!isMinorNow()&&!!(me&&me.date&&me.amount>0&&me.date>=ws&&me.date<=simDate);
+  var birBonusApplied=!isMinorNow()&&!!(be&&be.date&&be.amount>0&&
+    be.date>='2024-01-01'&&simDate>=be.date&&simDate<=addY(be.date,2));
+  var marBonusAmt=marBonusApplied?Math.min(me.amount,10000):0;
+  var birBonusAmt=birBonusApplied?Math.min(me&&marBonusApplied?Math.max(0,10000-me.amount):10000,be?be.amount:0):0;
+  return{sorted:sorted,limit:limit,regularLimit:regularLimit,bonus:bonus,
+         marBonusApplied:marBonusApplied,birBonusApplied:birBonusApplied,
+         marBonusAmt:marBonusAmt,birBonusAmt:birBonusAmt,
+         ws:ws,tx:tx,wx:wx,st:st,
+         active:active,expired:expired,asum:asum,rem:rem,over:over,pct:pct,svgH:svgH};
+}
+
+// ── 커스텀 날짜 입력 빌더 ────────────────────────────────────
+function dig(prefix, dateStr, disabled, minY, maxY, compact){
+  var y='',m='',d='';
+  if(dateStr&&dateStr.length===10){
+    y=dateStr.slice(0,4);
+    m=String(parseInt(dateStr.slice(5,7),10));
+    d=String(parseInt(dateStr.slice(8,10),10));
+  }
+  var dis=disabled?' disabled':'';
+  var fi='border:none;background:transparent;outline:none;padding:2px 0;text-align:center;font-size:14px;color:#18181B;font-family:inherit;';
+  var sep='<span style="color:#D1D5DB;font-size:13px;user-select:none;flex-shrink:0;padding:0 1px">-</span>';
+  var outerSt=(disabled?'opacity:.4;pointer-events:none;':'')+(compact?'width:auto;flex-shrink:0;':'');
+  return '<div class="dig"'+(outerSt?' style="'+outerSt+'"':'')+'>'+
+    '<input type="number" id="dy-'+prefix+'" placeholder="YYYY" value="'+esc(y)+'"'+dis+' style="'+fi+'width:66px">'+
+    sep+
+    '<input type="number" id="dm-'+prefix+'" placeholder="MM" min="1" max="12" value="'+esc(m)+'"'+dis+' style="'+fi+'width:42px">'+
+    sep+
+    '<input type="number" id="dd-'+prefix+'" placeholder="DD" min="1" max="31" value="'+esc(d)+'"'+dis+' style="'+fi+'width:42px">'+
+    '</div>';
+}
+
+// ── 날짜 입력 현재값 읽기 ────────────────────────────────────
+function readDig(prefix){
+  var yEl=document.getElementById('dy-'+prefix);
+  var mEl=document.getElementById('dm-'+prefix);
+  var dEl=document.getElementById('dd-'+prefix);
+  if(!yEl||!mEl||!dEl)return null;
+  var y=parseInt(yEl.value),m=parseInt(mEl.value),d=parseInt(dEl.value);
+  if(isNaN(y)||isNaN(m)||isNaN(d)||m<1||m>12||d<1||d>31)return null;
+  var s=y+'-'+(m<10?'0':'')+m+'-'+(d<10?'0':'')+d;
+  return isValidDate(s,1990,2060)?s:null;
+}
+
+// ── 날짜 입력 자동 다음 칸 이동 바인딩 ────────────────────
+function bindDig(prefix, minY, maxY, onDone){
+  var yEl=document.getElementById('dy-'+prefix);
+  var mEl=document.getElementById('dm-'+prefix);
+  var dEl=document.getElementById('dd-'+prefix);
+  if(!yEl||!mEl||!dEl)return;
+  function mkDate(){
+    var y=parseInt(yEl.value),m=parseInt(mEl.value),d=parseInt(dEl.value);
+    if(isNaN(y)||isNaN(m)||isNaN(d))return null;
+    if(m<1||m>12||d<1||d>31||y<(minY||1990)||y>(maxY||2060))return null;
+    var s=y+'-'+(m<10?'0':'')+m+'-'+(d<10?'0':'')+d;
+    return isValidDate(s,minY||1990,maxY||2060)?s:null;
+  }
+  function tryDone(){var s=mkDate();if(s)onDone(s);}
+  yEl.addEventListener('keyup',function(e){
+    if(e.key>='0'&&e.key<='9'&&String(yEl.value).length>=4){mEl.focus();mEl.select();}
+  });
+  mEl.addEventListener('keyup',function(e){
+    if(e.key>='0'&&e.key<='9'){
+      var v=String(mEl.value),n=parseInt(v);
+      if(n>12){mEl.value=12;v='12';}
+      if(v.length>=2||(v.length===1&&n>1)){dEl.focus();dEl.select();}
+    }
+  });
+  dEl.addEventListener('keyup',function(e){
+    if(e.key>='0'&&e.key<='9'){
+      var v=String(dEl.value),n=parseInt(v);
+      if(n>31)dEl.value=31;
+      else if(v.length>=2||(v.length===1&&n>3))dEl.blur();
+    }
+  });
+  mEl.addEventListener('input',function(){var n=parseInt(mEl.value);if(!isNaN(n)&&n>12)mEl.value=12;});
+  dEl.addEventListener('input',function(){var n=parseInt(dEl.value);if(!isNaN(n)&&n>31)dEl.value=31;});
+  yEl.addEventListener('blur',tryDone);mEl.addEventListener('blur',tryDone);dEl.addEventListener('blur',tryDone);
+  yEl.addEventListener('change',tryDone);mEl.addEventListener('change',tryDone);dEl.addEventListener('change',tryDone);
+}
+
+// ── SVG 빌더 ──────────────────────────────────────────────────
+function buildSVG(d){
+  var sorted=d.sorted,ws=d.ws,tx=d.tx,wx=d.wx,svgH=d.svgH;
+  var cwx=Math.max(CL,wx);
+  var kd=getKeyDates();
+  var snappedKD=null;
+  for(var si=0;si<kd.length;si++){if(kd[si].date===simDate){snappedKD=kd[si];break;}}
+
+  var grid='';
+  for(var y=chartYS+1;y<chartYE;y++){
+    var gx=toX(y+'-01-01'),i5=y%5===0;
+    grid+='<line x1="'+gx+'" y1="'+(HH-8)+'" x2="'+gx+'" y2="'+(svgH-6)+
+          '" stroke="'+(i5?'#D1D5DB':'#EAEAEB')+'" stroke-width="'+(i5?1.4:0.7)+'"/>';
+    if(y%2===0){
+      grid+='<text x="'+gx+'" y="'+(HH-32)+'" text-anchor="middle" font-size="10" fill="'+(i5?'#71717A':'#A1A1AA')+'" font-weight="'+(i5?700:400)+'">'+y+'</text>';
+      var ageY=calcAgeAtJan1(y);
+      if(ageY!==null&&ageY>=0){
+        var isAdultY=ageY>=19;
+        var prevAge=calcAgeAtJan1(y-2);
+        var turning=(prevAge!==null&&prevAge<19&&isAdultY);
+        grid+='<text x="'+gx+'" y="'+(HH-18)+'" text-anchor="middle" font-size="9" fill="'+(isAdultY?'#1E40AF':'#A1A1AA')+'" font-weight="'+(turning?700:400)+'">'+ageY+'세</text>';
+        if(turning)grid+='<text x="'+gx+'" y="'+(HH-6)+'" text-anchor="middle" font-size="9" fill="#059669" opacity=".9">성년↑</text>';
+      }
+    }
+  }
+
+  var keyMarkers='';
+  for(var ki=0;ki<kd.length;ki++){
+    var ke=kd[ki];
+    var kx=toX(ke.date);
+    if(kx<CL||kx>VB_W-PR)continue;
+    var kcolor=ke.type==='adult'?'#059669':ke.type==='marriage'?'#7C3AED':ke.type==='birth'?'#0891B2':'#EA580C';
+    var isSnap=(ke.date===simDate);
+    keyMarkers+='<line x1="'+kx+'" y1="'+(HH+6)+'" x2="'+kx+'" y2="'+(svgH-22)+
+      '" stroke="'+kcolor+'" stroke-width="'+(isSnap?2:1.2)+'" stroke-dasharray="3,2" opacity="'+(isSnap?.9:.4)+'"/>';
+    keyMarkers+='<circle cx="'+kx+'" cy="'+(HH+2)+'" r="'+(isSnap?5.5:3.5)+'" fill="'+kcolor+'" opacity="'+(isSnap?.95:.55)+'"/>';
+    if(isSnap)keyMarkers+='<circle cx="'+kx+'" cy="'+(HH+2)+'" r="9" fill="none" stroke="'+kcolor+'" stroke-width="1.5" opacity=".3"/>';
+  }
+
+  var bars='';
+  for(var j=0;j<sorted.length;j++){
+    var g=sorted[j];
+    var s=d.st(g);
+    var gxb=toX(g.date);
+    var ex=Math.min(VB_W-PR,toX(addY(g.date,10)));
+    var bw=Math.max(5,ex-gxb);
+    var by=HH+j*RH+BT;
+    var A=s==='active',E=s==='expired',F=s==='future';
+    var isSp=A&&isInSpecialWindow(g);
+    var isMarSp=isSp&&g.eventType==='marriage';
+    var isBirSp=isSp&&g.eventType==='birth';
+    var fill=A?(isMarSp?'url(#gm)':isBirSp?'url(#gb)':'url(#ga)'):E?'#EAEAEC':'#EEF2FF';
+    var strk=A?(isMarSp?'#7C3AED':isBirSp?'#0891B2':'#1E40AF'):E?'#D1D5DB':'#C7D2FE';
+    var tc=A?(isMarSp?'#6D28D9':isBirSp?'#0E7490':'#1E3A8A'):E?'#A1A1AA':'#818CF8';
+    var lc=A?'#71717A':'#A1A1AA';
+    bars+='<g'+(E?' opacity=".55"':'')+'>'+
+      '<text x="'+(CL-5)+'" y="'+(by+BH/2+4)+'" text-anchor="end" font-size="10" fill="'+lc+'">'+esc(g.date.slice(2,7))+'</text>'+
+      '<rect x="'+gxb+'" y="'+by+'" width="'+bw+'" height="'+BH+'" rx="7" fill="'+fill+'" stroke="'+strk+'" stroke-width="'+(A?1.5:.75)+'"'+(F?' stroke-dasharray="5,3"':'')+'/>';
+    if(A&&bw>14)bars+='<rect x="'+(gxb+3)+'" y="'+(by+2)+'" width="'+Math.min(bw-6,55)+'" height="3" rx="2" fill="white" opacity=".28"/>';
+    if(ex<VB_W-PR-2)bars+='<line x1="'+ex+'" y1="'+(by+7)+'" x2="'+ex+'" y2="'+(by+BH-7)+'" stroke="'+(A?(isMarSp?'#C4B5FD':isBirSp?'#67E8F9':'#93C5FD'):'#D1D5DB')+'" stroke-width="1" stroke-dasharray="2,2"/>';
+    if(bw>=44)bars+='<text x="'+(gxb+bw/2)+'" y="'+(by+BH/2+(bw>=95?6:4))+'" text-anchor="middle" font-size="12" font-weight="700" fill="'+tc+'">'+man(g.amount)+'</text>';
+    if(bw>=95)bars+='<text x="'+(gxb+bw/2)+'" y="'+(by+BH/2-7)+'" text-anchor="middle" font-size="9" fill="'+tc+'" opacity=".75">'+esc(g.title.length>12?g.title.slice(0,12)+'…':g.title)+'</text>';
+    if(isSp&&bw>20)bars+='<text x="'+(gxb+bw-6)+'" y="'+(by+BH-5)+'" text-anchor="end" font-size="9" fill="'+(isMarSp?'#7C3AED':'#0891B2')+'" font-weight="700" opacity=".85">'+(isMarSp?'💍혼인':'👶출산')+'</text>';
+    bars+='</g>';
+  }
+
+  var winEdge='';
+  if(wx>=CL){
+    winEdge='<line x1="'+wx+'" y1="'+(HH-6)+'" x2="'+wx+'" y2="'+(svgH-24)+'" stroke="#1E40AF" stroke-width="1.25" stroke-dasharray="5,3" opacity=".28"/>'+
+      '<text x="'+(wx+4)+'" y="'+(HH-7)+'" font-size="9" fill="#1E40AF" opacity=".5">← 10년 전 '+esc(ws.slice(0,7))+'</text>';
+  }
+
+  var todayLine=
+    '<line x1="'+tx+'" y1="2" x2="'+tx+'" y2="'+(svgH-4)+'" stroke="#1E40AF" stroke-width="2.5"/>'+
+    '<rect x="'+(tx-32)+'" y="2" width="64" height="19" rx="5" fill="#1E40AF"/>'+
+    '<text x="'+tx+'" y="15.5" text-anchor="middle" font-size="10" font-weight="800" fill="#EFF6FF">기준날짜</text>';
+  if(snappedKD){
+    var sc=snappedKD.type==='adult'?'#059669':snappedKD.type==='marriage'?'#7C3AED':snappedKD.type==='birth'?'#0891B2':'#EA580C';
+    var sl=snappedKD.type==='adult'?'성년전환일':snappedKD.type==='marriage'?'혼인신고일':snappedKD.type==='birth'?'출생(입양)일':esc(snappedKD.label)+'만료';
+    todayLine+='<rect x="'+(tx-40)+'" y="21" width="80" height="14" rx="3" fill="'+sc+'"/>'+
+      '<text x="'+tx+'" y="32" text-anchor="middle" font-size="9" font-weight="700" fill="white">📌 '+sl+'</text>';
+  }
+
+  var ly=svgH-13;
+  var legend='<g transform="translate('+(CL+4)+','+ly+')">'+
+    '<rect x="0" y="0" width="11" height="9" rx="2" fill="url(#ga)" stroke="#1E40AF" stroke-width="1"/>'+
+    '<text x="16" y="8.5" font-size="9" fill="#71717A">활성 합산</text>'+
+    '<rect x="78" y="0" width="11" height="9" rx="2" fill="url(#gm)" stroke="#7C3AED" stroke-width="1"/>'+
+    '<text x="94" y="8.5" font-size="9" fill="#71717A">혼인 공제</text>'+
+    '<rect x="158" y="0" width="11" height="9" rx="2" fill="url(#gb)" stroke="#0891B2" stroke-width="1"/>'+
+    '<text x="174" y="8.5" font-size="9" fill="#71717A">출산 공제</text>'+
+    '<rect x="238" y="0" width="11" height="9" rx="2" fill="#EAEAEC" stroke="#D1D5DB" stroke-width=".75"/>'+
+    '<text x="254" y="8.5" font-size="9" fill="#A1A1AA">만료 제외</text>'+
+    '<rect x="318" y="0" width="11" height="9" rx="2" fill="#EEF2FF" stroke="#C7D2FE" stroke-width=".75" stroke-dasharray="3,2"/>'+
+    '<text x="334" y="8.5" font-size="9" fill="#A1A1AA">예정</text>'+
+    '<circle cx="372" cy="4.5" r="3.5" fill="#059669" opacity=".7"/>'+
+    '<text x="380" y="8.5" font-size="9" fill="#71717A">성년전환</text>'+
+    '<circle cx="436" cy="4.5" r="3.5" fill="#EA580C" opacity=".7"/>'+
+    '<text x="444" y="8.5" font-size="9" fill="#71717A">만료(자석)</text>'+
+    '<circle cx="504" cy="4.5" r="3.5" fill="#7C3AED" opacity=".7"/>'+
+    '<text x="512" y="8.5" font-size="9" fill="#71717A">혼인일</text>'+
+    '<circle cx="548" cy="4.5" r="3.5" fill="#0891B2" opacity=".7"/>'+
+    '<text x="556" y="8.5" font-size="9" fill="#71717A">출생(입양)일</text>'+
+    '</g>';
+
+  return '<svg id="gantt-svg" viewBox="0 0 '+VB_W+' '+svgH+'"'+
+    ' style="width:100%;min-width:540px;display:block;cursor:crosshair;user-select:none;-webkit-user-select:none"'+
+    ' preserveAspectRatio="xMidYMid meet">'+
+    '<defs>'+
+      '<linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">'+
+        '<stop offset="0%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#1E40AF"/>'+
+      '</linearGradient>'+
+      '<linearGradient id="gm" x1="0" y1="0" x2="0" y2="1">'+
+        '<stop offset="0%" stop-color="#A78BFA"/><stop offset="100%" stop-color="#7C3AED"/>'+
+      '</linearGradient>'+
+      '<linearGradient id="gb" x1="0" y1="0" x2="0" y2="1">'+
+        '<stop offset="0%" stop-color="#22D3EE"/><stop offset="100%" stop-color="#0891B2"/>'+
+      '</linearGradient>'+
+    '</defs>'+
+    '<rect width="'+VB_W+'" height="'+svgH+'" fill="#FAFAFA"/>'+
+    grid+
+    '<line x1="'+CL+'" y1="'+HH+'" x2="'+(VB_W-PR)+'" y2="'+HH+'" stroke="#E5E7EB" stroke-width="1"/>'+
+    '<rect x="'+cwx+'" y="'+(HH-4)+'" width="'+Math.max(0,tx-cwx)+'" height="'+Math.max(0,svgH-HH-26)+'" fill="rgba(30,64,175,.05)"/>'+
+    winEdge+keyMarkers+bars+todayLine+
+    '<rect id="drag-handle" x="'+(tx-14)+'" y="'+HH+'" width="28" height="'+(svgH-HH-6)+'" fill="transparent" style="cursor:col-resize"/>'+
+    legend+
+    '</svg>';
+}
+
+// ── 키 날짜 목록 ───────────────────────────────────────────────
+function buildKeyDatesList(){
+  var kd=getKeyDates();
+  if(!kd.length)return '';
+  var kds=kd.slice().sort(function(a,b){return a.date<b.date?-1:1;});
+  var rows='';
+  for(var i=0;i<kds.length;i++){
+    var ke=kds[i];
+    var relDays=Math.round((new Date(ke.date)-new Date(simDate))/86400000);
+    var isPast=ke.date<=simDate;
+    var isNear=!isPast&&relDays<365*2;
+    var relStr=relDays===0?'오늘':relDays>0?'D-'+relDays.toLocaleString('ko-KR'):'D+'+Math.abs(relDays).toLocaleString('ko-KR')+'(경과)';
+    var clr=isPast?'#A1A1AA':ke.type==='adult'?'#059669':ke.type==='marriage'?'#7C3AED':ke.type==='birth'?'#0891B2':(isNear?'#EA580C':'#52525B');
+    var icon=ke.type==='adult'?'🎓':ke.type==='marriage'?'💍':ke.type==='birth'?'👶':'♻️';
+    var desc=ke.type==='adult'?'성년 전환 → 비과세 한도 2,000만 → 5,000만 원':
+             ke.type==='marriage'?'혼인신고일 · 전후 2년(총 4년) 증여 시 +1억 특례':
+             ke.type==='birth'?'출생(입양)일 (2024년 이후 적용) · 출생일로부터 2년 이내 기준날짜일 때만 특례 적용':
+             esc(ke.label)+' 만료 → '+man(ke.amount)+' 한도 부활';
+    var badge='';
+    if(ke.type==='adult'){
+      badge=isPast?
+        '<span style="font-size:10px;font-weight:700;color:#A1A1AA;background:#F4F4F5;padding:1px 6px;border-radius:9999px">전환 완료</span>':
+        '<span style="font-size:10px;font-weight:700;color:#059669;background:#F0FDF4;padding:1px 6px;border-radius:9999px">+3,000만 예정</span>';
+    } else if(ke.type==='marriage'||ke.type==='birth'){
+      var inWin=ke.type==='marriage'?
+        (simDate>=addY(ke.date,-2)&&simDate<=addY(ke.date,2)):
+        (simDate>=ke.date&&simDate<=addY(ke.date,2));
+      badge=inWin?'<span style="font-size:10px;font-weight:700;color:#EA580C;background:#FFF7ED;padding:1px 6px;border-radius:9999px">★ 특례 기간 내</span>':
+            isPast?'<span style="font-size:10px;font-weight:700;color:#A1A1AA;background:#F4F4F5;padding:1px 6px;border-radius:9999px">기간 경과</span>':'';
+    } else if(!isPast&&isNear){
+      badge='<span style="font-size:10px;font-weight:700;color:#EA580C;background:#FFF7ED;padding:1px 6px;border-radius:9999px">곧 부활</span>';
+    } else if(isPast){
+      badge='<span style="font-size:10px;font-weight:700;color:#A1A1AA;background:#F4F4F5;padding:1px 6px;border-radius:9999px">부활 완료</span>';
+    }
+    rows+='<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #F3F4F6;opacity:'+(isPast?.5:1)+'">'+
+      '<span style="font-size:14px;line-height:1.5">'+icon+'</span>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+
+          '<span style="font-size:12px;font-weight:700;color:'+clr+';font-variant-numeric:tabular-nums">'+esc(ke.date)+'</span>'+
+          '<span style="font-size:11px;color:#A1A1AA">'+relStr+'</span>'+badge+
+        '</div>'+
+        '<div style="font-size:11px;color:#71717A;margin-top:2px">'+desc+'</div>'+
+      '</div></div>';
+  }
+  return '<div style="margin-top:16px;padding-top:14px;border-top:1px solid #E5E7EB">'+
+    '<div class="lbl" style="margin-bottom:8px">한도 변경 주요 날짜</div>'+rows+'</div>';
+}
+
+// ── 상속세 배리어 섹션 ─────────────────────────────────────────
+function buildBarrierSection(){
+  var gs=C().gifts;
+  if(!gs.length)return '';
+  var sorted=gs.slice().sort(function(a,b){return a.date<b.date?-1:1;});
+  var rows='';
+  for(var i=0;i<sorted.length;i++){
+    var g=sorted[i];
+    var safeDate=addY(g.date,10);
+    var isFuture=g.date>simDate;
+    var isSafe=simDate>=safeDate;
+    var isActive=!isFuture&&!isSafe;
+    var remainDays=Math.round((new Date(safeDate)-new Date(simDate))/86400000);
+    var dstr=isSafe?'상속세 레이더 탈출 완료':isFuture?'증여 예정':'D-'+remainDays.toLocaleString('ko-KR')+' ('+safeDate+' 만료)';
+    var stColor=isSafe?'#059669':isFuture?'#A1A1AA':'#EA580C';
+    var stBg=isSafe?'#F0FDF4':isFuture?'#F9FAFB':'#FFF7ED';
+    var stBorder=isSafe?'rgba(5,150,105,.15)':isFuture?'#E5E7EB':'rgba(234,88,12,.2)';
+    var stRowBg=isSafe?'rgba(5,150,105,.03)':isFuture?'rgba(161,161,170,.03)':'rgba(234,88,12,.03)';
+    var icon=isSafe?'✅':isFuture?'⏳':'⚠️';
+    var pct=0;
+    if(isActive){
+      pct=Math.max(0,Math.min(100,(dateToDays(simDate)-dateToDays(g.date))/(dateToDays(safeDate)-dateToDays(g.date))*100));
+    } else if(isSafe){pct=100;}
+    rows+='<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;margin-bottom:6px;background:'+stRowBg+';border:1px solid '+stBorder+';opacity:'+(isFuture?.65:1)+'">'+
+      '<span style="font-size:16px;flex-shrink:0">'+icon+'</span>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">'+
+          '<span style="font-size:12px;font-weight:600;color:#18181B">'+esc(g.title)+'</span>'+
+          '<span style="font-size:11px;font-weight:700;color:'+stColor+';background:'+stBg+';padding:2px 8px;border-radius:6px;font-variant-numeric:tabular-nums">'+dstr+'</span>'+
+        '</div>'+
+        '<div style="font-size:11px;color:#A1A1AA;margin-top:2px">증여일: '+esc(g.date)+' → 안전만료일: '+esc(safeDate)+' · '+man(g.amount)+'</div>'+
+        (isActive?'<div style="margin-top:5px;height:3px;background:#F3F4F6;border-radius:9999px;overflow:hidden">'+
+          '<div style="height:100%;width:'+pct.toFixed(1)+'%;border-radius:9999px;background:linear-gradient(90deg,#EA580C,#FB923C)"></div>'+
+          '</div>':'')+
+      '</div></div>';
+  }
+  return '<div class="card" style="margin-top:14px">'+
+    '<div style="margin-bottom:14px">'+
+      '<span class="lbl" style="margin-bottom:4px">상속세 역합산 배리어 · 상증세법 제13조</span>'+
+      '<p style="font-size:12px;color:#71717A;line-height:1.6">증여일로부터 <strong>10년 이내</strong>에 증여자가 사망하면 해당 재산이 상속세 과세가액에 다시 합산됩니다. 10년을 버텨야 상속세 레이더를 완전히 탈출합니다.</p>'+
+    '</div>'+
+    rows+'</div>';
+}
+
+// ── 전체 HTML ─────────────────────────────────────────────────
+function buildHTML(){
+  var d=derive();
+  var sorted=d.sorted,limit=d.limit,ws=d.ws;
+  var active=d.active,expired=d.expired;
+  var asum=d.asum,rem=d.rem,over=d.over,pct=d.pct;
+  var minor=isMinorNow();
+  var age=calcAge(C().birthDate,simDate);
+  var ageStr=age!==null?'만 '+age+'세 · '+(minor?'미성년자 (한도 2,000만 원)':'성년자 (한도 5,000만 원)'):'생년월일 미입력';
+  var ageColor=minor?'#059669':'#1E40AF';
+
+  // 자녀 탭
+  var tabsHTML='<div class="tab-bar">';
+  for(var ti=0;ti<children.length;ti++){
+    var isAct=ti===activeChildIdx;
+    tabsHTML+='<button class="tab-btn'+(isAct?' active':'')+'" data-child-idx="'+ti+'">'+
+      esc(children[ti].name)+
+      (children.length>1?'<span class="tab-x" data-del-child="'+ti+'">×</span>':'')+
+      '</button>';
+  }
+  tabsHTML+='<button class="tab-add" id="btn-add-child">＋</button>';
+  tabsHTML+='</div>';
+
+  // 활성 증여 수식
+  var formula='';
+  if(active.length){
+    formula='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;line-height:2.2">';
+    for(var ai=0;ai<active.length;ai++){
+      var ag=active[ai];
+      var isSp=isInSpecialWindow(ag);
+      var spCol=ag.eventType==='marriage'?'#7C3AED':ag.eventType==='birth'?'#0891B2':'#1E40AF';
+      formula+='<span style="display:inline-flex;align-items:center;gap:4px">'+
+        (ai?'<span style="color:#A1A1AA;font-size:14px">+</span>':'')+
+        '<span style="font-size:16px;font-weight:800;color:'+(isSp?spCol:'#1E40AF')+';font-variant-numeric:tabular-nums">'+man(ag.amount)+'</span>'+
+        '<span style="font-size:11px;color:#71717A">('+esc(ag.title)+')</span>'+
+        (isSp?'<span style="font-size:10px;color:'+spCol+';font-weight:700">'+(ag.eventType==='marriage'?'💍':ag.eventType==='birth'?'👶':'★')+'</span>':'')+
+        '</span>';
+    }
+    formula+='<span style="color:#A1A1AA;font-size:14px;margin:0 4px">=</span>'+
+      '<span style="font-size:20px;font-weight:900;font-variant-numeric:tabular-nums;color:'+(over?'#DC2626':'#18181B')+'">총 '+full(asum)+'</span></div>';
+  } else {
+    formula='<div style="color:#A1A1AA;font-size:13px;font-style:italic;padding:8px 0">이 시점 기준 활성 증여 없음</div>';
+  }
+  var expiredNote='';
+  if(expired.length){
+    var pts=[];
+    for(var ei=0;ei<expired.length;ei++)pts.push(esc(expired[ei].title)+' '+man(expired[ei].amount));
+    expiredNote='<div style="margin-top:10px;padding-top:10px;border-top:1px solid #F3F4F6;font-size:11px;color:#A1A1AA">'+
+      '<span style="color:#71717A;font-weight:600">10년 경과 제외: </span>'+pts.join(' · ')+'</div>';
+  }
+
+  // 증여 내역 목록
+  var listRows='';
+  for(var li=0;li<sorted.length;li++){
+    var lg=sorted[li],ls=d.st(lg);
+    var isSpec=ls==='active'&&isInSpecialWindow(lg);
+    var isMarSpec=isSpec&&lg.eventType==='marriage';
+    var isBirSpec=isSpec&&lg.eventType==='birth';
+    var spColor=isMarSpec?'#7C3AED':isBirSpec?'#0891B2':'#EA580C';
+    var tc=ls==='active'?(isSpec?(isMarSpec?'#6D28D9':isBirSpec?'#0E7490':'#C2410C'):'#1E40AF'):ls==='future'?'#6366F1':'#A1A1AA';
+    var ac=ls==='active'?(isSpec?spColor:'#1E40AF'):'#A1A1AA';
+    var bg=ls==='active'?(isSpec?'rgba('+(isMarSpec?'124,58,237':isBirSpec?'8,145,178':'234,88,12')+',.05)':'rgba(30,64,175,.05)'):ls==='future'?'rgba(99,102,241,.04)':'transparent';
+    var bd=ls==='active'?(isSpec?'rgba('+(isMarSpec?'124,58,237':isBirSpec?'8,145,178':'234,88,12')+',.2)':'rgba(30,64,175,.18)'):ls==='future'?'rgba(99,102,241,.2)':'#E5E7EB';
+    var badge=ls==='expired'?'<span style="color:#DC2626;margin-left:4px;font-size:10px">만료</span>':
+              ls==='future'?'<span style="color:#6366F1;margin-left:4px;font-size:10px">예정</span>':
+              isSpec?'<span style="color:'+spColor+';margin-left:4px;font-size:10px;font-weight:700">'+(isMarSpec?'💍혼인':isBirSpec?'👶출산':'★특례')+'</span>':'';
+    listRows+='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:9px;margin-bottom:5px;background:'+bg+';border:1px solid '+bd+';opacity:'+(ls==='expired'?.5:1)+'">'+
+      '<div style="min-width:0">'+
+        '<div style="font-size:12px;font-weight:600;color:'+tc+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(lg.title)+badge+'</div>'+
+        '<div style="font-size:11px;color:#A1A1AA;margin-top:1px">'+esc(lg.date)+' → '+esc(addY(lg.date,10))+'</div>'+
+      '</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
+        '<span style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:'+ac+'">'+man(lg.amount)+'</span>'+
+        (lg.id==='_mar'||lg.id==='_bir'?'':'<button data-rm="'+esc(lg.id)+'" style="background:none;border:none;color:#A1A1AA;font-size:18px;line-height:1;padding:0 3px">×</button>')+
+      '</div></div>';
+  }
+
+  // 혼인/출산 특례 패널
+  var cSE=C().specialEvents;
+  var marActive=cSE.marriage!==null;
+  var birActive=cSE.birth!==null;
+  var marDate=marActive&&cSE.marriage?cSE.marriage.date:'';
+  var marAmt=marActive&&cSE.marriage?cSE.marriage.amount||0:0;
+  var birDate=birActive&&cSE.birth?cSE.birth.date:'';
+  var birAmt=birActive&&cSE.birth?cSE.birth.amount||0:0;
+  var marWin0=marDate?addY(marDate,-2):'';
+  var marWin1=marDate?addY(marDate,2):'';
+  var birWin0=birDate;
+  var birWin1=birDate?addY(birDate,2):'';
+  var marSimInWin=!!(marDate&&!minor&&simDate>=addY(marDate,-2)&&simDate<=addY(marDate,2));
+  var birSimInWin=!!(birDate&&birDate>='2024-01-01'&&simDate>=birDate&&simDate<=addY(birDate,2));
+  var birPre2024=!!(birDate&&birDate<'2024-01-01');
+  function spStatusPill(applied,simInWin,hasDate){
+    if(!hasDate)return '';
+    var c=applied?'#EA580C':simInWin?'#059669':'#A1A1AA';
+    var bg=applied?'#FFF7ED':simInWin?'#F0FDF4':'#F4F4F5';
+    var lbl=applied?'★ 적용 중':simInWin?'✓ 가능':'기간 외';
+    return '<span style="font-size:10px;font-weight:700;color:'+c+';background:'+bg+';padding:2px 7px;border-radius:9999px;white-space:nowrap">'+lbl+'</span>';
+  }
+  function spTogBtn(type,active){
+    var na=type==='marriage'&&minor;
+    var lbl=type==='marriage'?'💍 혼인':'👶 출산/입양';
+    var actClr=type==='marriage'?'color:#7C3AED;background:#EDE9FE;border-color:#C4B5FD':'color:#0891B2;background:#ECFEFF;border-color:#A5F3FC';
+    return '<button data-sp-toggle="'+esc(type)+'" class="btn-sm" style="min-width:90px;'+(na?'opacity:.38;pointer-events:none;':'')+(active&&!na?actClr:'')+'">'+(active&&!na?'● ':'')+lbl+'</button>';
+  }
+  function spAmtInput(id,val){
+    return '<input type="number" id="'+esc(id)+'" placeholder="금액(만)" min="0" value="'+(val>0?val:'')+'" style="width:90px;padding:5px 8px;font-size:12px;border:1.5px solid #E5E7EB;border-radius:8px;background:#fff;text-align:right;font-family:inherit"/>';
+  }
+  var spEventPanel='<div class="card" style="margin-bottom:14px">'+
+    '<span class="lbl">혼인 · 출산/입양 통합 공제 특례 <span style="font-size:10px;font-weight:500;color:#A1A1AA;text-transform:none;letter-spacing:0">(합산 최대 1억 원)</span></span>'+
+    '<div style="display:flex;flex-direction:column;gap:8px">'+
+      '<div style="display:flex;flex-wrap:nowrap;align-items:center;gap:8px;overflow-x:auto">'+
+        spTogBtn('marriage',marActive)+
+        (marActive&&!minor?
+          dig('sp-mar',marDate,false,1990,2060,true)+
+          spAmtInput('sp-mar-amt',marAmt)+
+          spStatusPill(d.marBonusApplied,marSimInWin,!!marDate)+
+          (marWin0?'<span style="font-size:10px;color:#A1A1AA;white-space:nowrap;flex-shrink:0">'+esc(marWin0)+'~'+esc(marWin1)+'</span>':'')
+        :
+          '<span style="font-size:11px;color:#A1A1AA;white-space:nowrap">'+(minor?'(성년 이후 가능)':'혼인신고일 ±2년 구간')+'</span>'
+        )+
+      '</div>'+
+      '<div style="display:flex;flex-wrap:nowrap;align-items:center;gap:8px;overflow-x:auto">'+
+        spTogBtn('birth',birActive)+
+        (birActive?
+          dig('sp-bir',birDate,false,1990,2060,true)+
+          spAmtInput('sp-bir-amt',birAmt)+
+          (birPre2024?
+            '<span style="font-size:10px;font-weight:700;color:#A1A1AA;background:#F4F4F5;padding:2px 7px;border-radius:9999px;white-space:nowrap">2024년 이전 — 미적용</span>':
+            spStatusPill(d.birBonusApplied,birSimInWin,!!birDate))+
+          (birWin0&&!birPre2024?'<span style="font-size:10px;color:#A1A1AA;white-space:nowrap;flex-shrink:0">'+esc(birWin0)+'~'+esc(birWin1)+'</span>':'')
+        :
+          '<span style="font-size:11px;color:#A1A1AA;white-space:nowrap">출생(입양)일 후 2년 구간</span>'
+        )+
+      '</div>'+
+      (d.bonus>0?
+        '<div style="font-size:10px;color:#EA580C;font-weight:700;margin-top:2px">★ 통합 특례 '+d.bonus.toLocaleString('ko-KR')+'만 원 적용 중 — 실효 한도 '+d.limit.toLocaleString('ko-KR')+'만 원 (기본 '+d.regularLimit.toLocaleString('ko-KR')+'만 + 특례 '+d.bonus.toLocaleString('ko-KR')+'만)</div>':
+        ((marActive||birActive)?'<div style="font-size:10px;color:#A1A1AA;margin-top:2px">성년 자녀 대상 · 혼인/출산 통합 특례 최대 1억 원 추가 (기본 5천만 합산 시 최대 1억 5천만 원 비과세)</div>':''))+
+    '</div>'+
+  '</div>';
+
+  // 빠른 추가 프리셋
+  var presetsData=[
+    {title:'부모 추가 증여',date:'2030-01-15',amount:1000},
+    {title:'조부모 증여',   date:'2031-06-01',amount:1500},
+    {title:'성인 기념 증여',date:'2035-04-05',amount:3000},
+  ];
+  var presets='';
+  for(var pi=0;pi<presetsData.length;pi++){
+    var p=presetsData[pi];
+    presets+='<button data-preset=\''+esc(JSON.stringify(p))+'\' style="padding:5px 10px;border-radius:6px;border:1px solid #E5E7EB;background:#F9FAFB;color:#52525B;font-size:11px;font-weight:600">'+esc(p.title)+' '+man(p.amount)+'</button>';
+  }
+
+  var limitLabel=minor?'미성년자 한도':d.bonus>0?'성년 + 특례 한도':'성년 한도';
+  var limitDetail=minor?'2,000만 원':d.bonus>0?d.regularLimit.toLocaleString('ko-KR')+'만 + 특례 '+d.bonus.toLocaleString('ko-KR')+'만 = '+d.limit.toLocaleString('ko-KR')+'만 원':'5,000만 원';
+
+  return (
+  '<div id="app">'+
+  '<div style="margin-bottom:22px">'+
+    '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px">'+
+      '<h1 style="font-size:21px;font-weight:800;color:#18181B;letter-spacing:-.025em">자녀 증여세 관리</h1>'+
+      '<div style="display:flex;align-items:center;gap:5px">'+
+        '<button id="btn-font-minus" class="btn-sm" style="padding:4px 10px;font-size:14px;font-weight:700;line-height:1">A−</button>'+
+        '<span style="font-size:11px;color:#A1A1AA;min-width:36px;text-align:center;font-variant-numeric:tabular-nums">'+Math.round(fontZoom*100)+'%</span>'+
+        '<button id="btn-font-plus" class="btn-sm" style="padding:4px 10px;font-size:14px;font-weight:700;line-height:1">A+</button>'+
+      '</div>'+
+    '</div>'+
+    '<p style="color:#71717A;font-size:12px;margin-bottom:8px">대한민국 상속세 및 증여세법 · 직계존속 그룹 10년 합산 · 비과세 한도: 미성년 2,000만 / 성년 5,000만 원</p>'+
+    '<div style="padding:7px 12px;background:#FFF7ED;border-radius:7px;border-left:3px solid #FB923C;font-size:11px;color:#92400E;line-height:1.6">'+
+      '⚠ <strong>참고 목적 전용:</strong> 세법은 매년 개정될 수 있습니다. 본 도구의 계산 결과는 참고용이며, 실제 증여·신고 전에는 반드시 세무 전문가의 상담을 받으시기 바랍니다.'+
+    '</div>'+
+  '</div>'+
+
+  tabsHTML+
+
+  '<div class="card" style="margin-bottom:14px;border-radius:0 16px 16px 16px;border-color:#93C5FD">'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:20px;align-items:start">'+
+      '<div>'+
+        '<span class="lbl">수증자 (자녀)</span>'+
+        '<label class="field-label">이름/별칭</label>'+
+        '<input id="inp-cname" type="text" value="'+esc(C().name)+'" placeholder="예: 자녀 1" style="margin-bottom:10px"/>'+
+        '<label class="field-label">생년월일</label>'+
+        dig('birth',C().birthDate,false,1940,2025)+
+        '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:'+(minor?'rgba(5,150,105,.06)':'rgba(30,64,175,.06)')+';border:1px solid '+(minor?'rgba(5,150,105,.18)':'rgba(30,64,175,.18)')+'">'+
+          '<span style="color:'+ageColor+';font-weight:700;font-size:12px">'+esc(ageStr)+'</span>'+
+        '</div>'+
+      '</div>'+
+      '<div>'+
+        '<span class="lbl">기준 날짜</span>'+
+        '<label class="field-label">기준 날짜</label>'+
+        '<div style="display:flex;gap:6px;align-items:stretch">'+
+          '<div style="flex:1">'+dig('today',simDate,false,1990,2060)+'</div>'+
+          '<button id="btn-today-set" class="btn-sm">오늘</button>'+
+        '</div>'+
+      '</div>'+
+      '<div>'+
+        '<span class="lbl">차트 범위</span>'+
+        '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center">'+
+          '<div><label class="field-label">시작 연도</label><input id="inp-ys" type="number" value="'+chartYS+'" min="1990" max="2025" style="text-align:center"/></div>'+
+          '<span style="color:#A1A1AA;padding-top:20px;text-align:center">~</span>'+
+          '<div><label class="field-label">종료 연도</label><input id="inp-ye" type="number" value="'+chartYE+'" min="2030" max="2060" style="text-align:center"/></div>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+  '</div>'+
+
+  spEventPanel+
+
+  '<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">'+
+    '<div style="padding:14px 20px 12px;border-bottom:1px solid #F3F4F6;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'+
+      '<span class="lbl" style="margin:0">증여 수명 타임라인 — '+esc(C().name)+'</span>'+
+      '<div style="display:flex;align-items:center;gap:10px">'+
+        '<span style="font-size:11px;color:#A1A1AA">기준날짜 선을 드래그하거나 클릭 · 주요 날짜(●)에 자석 스냅</span>'+
+        '<button id="btn-go-today" class="btn-sm">오늘로</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">'+buildSVG(d)+'</div>'+
+  '</div>'+
+
+  '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px">'+
+    '<div class="card" style="flex:2 1 290px">'+
+      '<span class="lbl">활성 증여 합산 — '+esc(simDate)+' 기준 · 역산 구간 '+esc(ws)+' ~ '+esc(simDate)+'</span>'+
+      formula+expiredNote+
+      '<div style="margin-top:14px">'+
+        '<div style="display:flex;justify-content:space-between;font-size:11px;color:#71717A;margin-bottom:4px">'+
+          '<span>한도 사용 '+pct.toFixed(1)+'%&nbsp;&nbsp;('+man(asum)+' / '+man(limit)+')</span>'+
+          (over?'<span style="color:#DC2626;font-weight:700">⚠ 한도 초과</span>':'')+
+        '</div>'+
+        '<div style="height:5px;background:#F3F4F6;border-radius:9999px;overflow:hidden">'+
+          '<div style="height:100%;width:'+pct+'%;border-radius:9999px;transition:width .15s;background:'+(over?'#EF4444':d.bonus>0?'linear-gradient(90deg,#1E40AF,#EA580C)':'linear-gradient(90deg,#1E40AF,#60A5FA)')+'"></div>'+
+        '</div>'+
+        (d.bonus>0?'<div style="font-size:11px;color:#EA580C;margin-top:4px">★ '+(d.marBonusApplied&&d.birBonusApplied?'혼인+출산/입양 통합':d.marBonusApplied?'혼인':'출산/입양')+' 특례 '+d.bonus.toLocaleString('ko-KR')+'만 원 적용 — 실효 한도 '+man(limit)+'</div>':'')+
+      '</div>'+
+    '</div>'+
+    '<div class="card" style="flex:1 1 145px;display:flex;flex-direction:column;justify-content:center;border:1.5px solid '+(over?'rgba(220,38,38,.25)':d.bonus>0?'rgba(234,88,12,.25)':'rgba(30,64,175,.25)')+';background:'+(over?'rgba(220,38,38,.04)':d.bonus>0?'rgba(234,88,12,.04)':'rgba(30,64,175,.04)')+'">'+
+      '<span class="lbl" style="color:#A1A1AA">'+(over?'한도 초과':'추가 증여 가능')+'</span>'+
+      '<div style="font-size:30px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;color:'+(over?'#DC2626':d.bonus>0?'#EA580C':'#1E40AF')+'">'+
+        (over?'-'+man(asum-limit):man(rem))+'</div>'+
+      '<div style="font-size:11px;color:#71717A;margin-top:6px">'+man(limit)+' − '+man(asum)+'</div>'+
+      '<div style="font-size:11px;color:#A1A1AA;margin-top:3px">'+limitLabel+'</div>'+
+      '<div style="font-size:10px;color:#A1A1AA;margin-top:2px">'+limitDetail+'</div>'+
+    '</div>'+
+  '</div>'+
+
+  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">'+
+    '<div class="card">'+
+      '<span class="lbl">등록된 증여 내역 ('+sorted.length+'건) — '+esc(C().name)+'</span>'+
+      '<div style="font-size:11px;color:#71717A;margin-bottom:10px;padding:7px 9px;border-radius:7px;background:#F8F9FA;border:1px solid #E5E7EB;line-height:1.6">'+
+        '💡 <strong>직계존속 그룹 합산</strong> — 부모·조부모·외조부모 등 모든 직계존속의 증여는 동일한 한도 바구니를 공유합니다.'+
+      '</div>'+
+      (listRows||'<div style="color:#D1D5DB;font-size:12px;font-style:italic;padding:8px 0">증여 내역을 추가하세요</div>')+
+      buildKeyDatesList()+
+    '</div>'+
+    '<div class="card">'+
+      '<span class="lbl">증여 내역 추가</span>'+
+      '<div style="margin-bottom:12px"><label class="field-label">증여 제목</label><input id="f-title" type="text" placeholder="예: 부모 3차 증여" value="'+esc(form.title)+'"/></div>'+
+      '<div style="margin-bottom:12px"><label class="field-label">증여일</label>'+dig('fdate',form.date,false,1990,2060)+'</div>'+
+      '<div style="margin-bottom:12px"><label class="field-label">금액 (만 원)</label><input id="f-amount" type="number" placeholder="예: 1000" min="1" value="'+esc(form.amount)+'"/></div>'+
+      '<button id="btn-add" style="width:100%;padding:11px 0;border-radius:10px;border:none;background:linear-gradient(135deg,#1E40AF,#3B82F6);color:white;font-size:13px;font-weight:700;letter-spacing:.01em">+ 증여 내역 추가</button>'+
+      '<div style="margin-top:14px;padding-top:12px;border-top:1px solid #F3F4F6">'+
+        '<div style="font-size:11px;color:#71717A;font-weight:600;margin-bottom:6px">빠른 예시 추가</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:5px">'+presets+'</div>'+
+      '</div>'+
+    '</div>'+
+  '</div>'+
+
+  buildBarrierSection()+
+
+  '<div style="text-align:center;color:#A1A1AA;font-size:11px;margin-top:28px;padding-top:20px;border-top:1px solid #E5E7EB">'+
+    'code-craftworks / child-gift-bench · 본 도구는 참고용입니다.'+
+  '</div>'+
+  '</div>'
+  );
+}
+
+// ── 렌더 ──────────────────────────────────────────────────────
+function render(){
+  document.getElementById('root').innerHTML=buildHTML();
+  saveState();
+  bind();
+  var app=document.getElementById('app');
+  if(app)app.style.zoom=fontZoom;
+}
+
+// ── 바인딩 ────────────────────────────────────────────────────
+function bind(){
+  // 폰트 크기 버튼
+  var bfp=document.getElementById('btn-font-plus');
+  if(bfp)bfp.addEventListener('click',function(){
+    fontZoom=Math.min(1.5,parseFloat((fontZoom+0.1).toFixed(1)));
+    saveState();
+    var app=document.getElementById('app');
+    if(app)app.style.zoom=fontZoom;
+    var sp=bfp.parentNode&&bfp.parentNode.querySelector('span');
+    if(sp)sp.textContent=Math.round(fontZoom*100)+'%';
+  });
+  var bfm=document.getElementById('btn-font-minus');
+  if(bfm)bfm.addEventListener('click',function(){
+    fontZoom=Math.max(0.7,parseFloat((fontZoom-0.1).toFixed(1)));
+    saveState();
+    var app=document.getElementById('app');
+    if(app)app.style.zoom=fontZoom;
+    var sp=bfm.parentNode&&bfm.parentNode.querySelector('span');
+    if(sp)sp.textContent=Math.round(fontZoom*100)+'%';
+  });
+
+  // 오늘 버튼들
+  var bts=document.getElementById('btn-today-set');
+  if(bts)bts.addEventListener('click',function(){simDate=todayStr();render();});
+  var bgt=document.getElementById('btn-go-today');
+  if(bgt)bgt.addEventListener('click',function(){simDate=todayStr();render();});
+
+  // 차트 범위 연도 입력
+  var ys=document.getElementById('inp-ys');
+  if(ys)ys.addEventListener('change',function(){var v=parseInt(ys.value,10);if(v>=1990&&v<chartYE-5){chartYS=v;render();}});
+  var ye=document.getElementById('inp-ye');
+  if(ye)ye.addEventListener('change',function(){var v=parseInt(ye.value,10);if(v>chartYS+5&&v<=2060){chartYE=v;render();}});
+
+  // 커스텀 날짜 입력 바인딩
+  bindDig('birth',1940,2025,function(ds){C().birthDate=ds;render();});
+  bindDig('today',1990,2060,function(ds){simDate=ds;render();});
+  bindDig('sp-mar',1990,2060,function(ds){if(C().specialEvents.marriage!==null){C().specialEvents.marriage.date=ds;render();}});
+  bindDig('sp-bir',1990,2060,function(ds){if(C().specialEvents.birth!==null){C().specialEvents.birth.date=ds;render();}});
+  bindDig('fdate',1990,2060,function(ds){form.date=ds;});
+
+  // 특례 금액 입력
+  var sma=document.getElementById('sp-mar-amt');
+  if(sma)sma.addEventListener('change',function(){if(C().specialEvents.marriage){C().specialEvents.marriage.amount=parseInt(sma.value,10)||0;render();}});
+  var sba=document.getElementById('sp-bir-amt');
+  if(sba)sba.addEventListener('change',function(){if(C().specialEvents.birth){C().specialEvents.birth.amount=parseInt(sba.value,10)||0;render();}});
+
+  // 혼인/출산 특례 토글
+  var spToggleBtns=document.querySelectorAll('[data-sp-toggle]');
+  for(var sti=0;sti<spToggleBtns.length;sti++){
+    (function(b){b.addEventListener('click',function(){
+      var t=b.dataset.spToggle;
+      var pfx=t==='marriage'?'sp-mar':'sp-bir';
+      if(C().specialEvents[t]!==null){C().specialEvents[t]=null;}
+      else{C().specialEvents[t]={date:readDig(pfx)||'',amount:0};}
+      render();
+    });})(spToggleBtns[sti]);
+  }
+
+  // 증여 추가
+  var ab=document.getElementById('btn-add');
+  if(ab)ab.addEventListener('click',function(){
+    var ft=document.getElementById('f-title'),fa=document.getElementById('f-amount');
+    var t=ft?ft.value.trim():'',dt=readDig('fdate')||form.date,am=fa?parseInt(fa.value,10)||0:0;
+    if(!t||!dt||am<=0)return;
+    C().gifts.push({id:uid(),title:t,date:dt,amount:am});
+    form={title:'',date:'',amount:''};render();
+  });
+  var ft2=document.getElementById('f-title'),fa2=document.getElementById('f-amount');
+  if(ft2)ft2.addEventListener('input',function(){form.title=ft2.value;});
+  if(fa2)fa2.addEventListener('input',function(){form.amount=fa2.value;});
+
+  // 삭제 버튼
+  var rmBtns=document.querySelectorAll('[data-rm]');
+  for(var ri=0;ri<rmBtns.length;ri++){
+    (function(b){b.addEventListener('click',function(){C().gifts=C().gifts.filter(function(g){return g.id!==b.dataset.rm;});render();});})(rmBtns[ri]);
+  }
+
+  // 프리셋 버튼
+  var pBtns=document.querySelectorAll('[data-preset]');
+  for(var pi2=0;pi2<pBtns.length;pi2++){
+    (function(b){b.addEventListener('click',function(){
+      try{var p=JSON.parse(b.dataset.preset);C().gifts.push({id:uid(),title:p.title,date:p.date,amount:p.amount});render();}catch(e){}
+    });})(pBtns[pi2]);
+  }
+
+  // 자녀 이름 입력
+  var cnInp=document.getElementById('inp-cname');
+  if(cnInp){
+    cnInp.addEventListener('input',function(){C().name=cnInp.value||('자녀 '+(activeChildIdx+1));saveState();});
+    cnInp.addEventListener('change',function(){render();});
+  }
+
+  // 탭 삭제 (×) — stopPropagation으로 탭 전환 이벤트 차단
+  var delBtns=document.querySelectorAll('.tab-x');
+  for(var di=0;di<delBtns.length;di++){
+    (function(b){b.addEventListener('click',function(e){
+      e.stopPropagation();
+      var idx=parseInt(b.dataset.delChild,10);
+      if(isNaN(idx)||children.length<=1)return;
+      if(!window.confirm('"'+children[idx].name+'" 자녀 데이터를 삭제하시겠습니까?'))return;
+      children.splice(idx,1);
+      if(activeChildIdx>=children.length)activeChildIdx=children.length-1;
+      form={title:'',date:'',amount:''};
+      render();
+    });})(delBtns[di]);
+  }
+
+  // 탭 전환
+  var tabBtns=document.querySelectorAll('[data-child-idx]');
+  for(var ti2=0;ti2<tabBtns.length;ti2++){
+    (function(b){b.addEventListener('click',function(){
+      var idx=parseInt(b.dataset.childIdx,10);
+      if(!isNaN(idx)&&idx!==activeChildIdx){
+        activeChildIdx=idx;
+        form={title:'',date:'',amount:''};
+        render();
+      }
+    });})(tabBtns[ti2]);
+  }
+
+  // 자녀 추가
+  var bac=document.getElementById('btn-add-child');
+  if(bac)bac.addEventListener('click',function(){
+    var n='자녀 '+(children.length+1);
+    children.push({id:uid(),name:n,birthDate:'',specialEvents:{marriage:null,birth:null},gifts:[]});
+    activeChildIdx=children.length-1;
+    form={title:'',date:'',amount:''};
+    render();
+  });
+
+  // SVG 클릭 & 드래그
+  var svg=document.getElementById('gantt-svg');
+  if(!svg)return;
+  svg.addEventListener('click',function(e){
+    if(dragging)return;
+    var r=svg.getBoundingClientRect();
+    var x=(e.clientX-r.left)*(VB_W/r.width);
+    var ratio=Math.max(0,Math.min(1,(x-CL)/CW));
+    var days=Math.round(dateToDays(chartYS+'-01-01')+ratio*(dateToDays(chartYE+'-01-01')-dateToDays(chartYS+'-01-01')));
+    simDate=snapToKeyDate(clampDays(days));render();
+  });
+  var dh=document.getElementById('drag-handle');
+  if(dh){
+    dh.addEventListener('mousedown',function(e){e.stopPropagation();dragging=true;document.body.style.cursor='col-resize';});
+    dh.addEventListener('touchstart',function(e){e.stopPropagation();e.preventDefault();dragging=true;},{passive:false});
+  }
+}
+
+// ── 전역 이벤트 ───────────────────────────────────────────────
+function dateFromX(cx){
+  var svg=document.getElementById('gantt-svg');if(!svg)return null;
+  var r=svg.getBoundingClientRect();
+  var x=(cx-r.left)*(VB_W/r.width);
+  var ratio=Math.max(0,Math.min(1,(x-CL)/CW));
+  var days=Math.round(dateToDays(chartYS+'-01-01')+ratio*(dateToDays(chartYE+'-01-01')-dateToDays(chartYS+'-01-01')));
+  return snapToKeyDate(clampDays(days));
+}
+window.addEventListener('mousemove',function(e){
+  if(!dragging)return;
+  var nd=dateFromX(e.clientX);if(nd&&nd!==simDate){simDate=nd;render();}
+});
+window.addEventListener('mouseup',function(){
+  if(dragging){dragging=false;document.body.style.cursor='';}
+});
+window.addEventListener('touchmove',function(e){
+  if(!dragging)return;e.preventDefault();
+  var nd=dateFromX(e.touches[0].clientX);if(nd&&nd!==simDate){simDate=nd;render();}
+},{passive:false});
+window.addEventListener('touchend',function(){dragging=false;});
+
+// ── 초기화 ────────────────────────────────────────────────────
+loadState();
+render();
+</script>
+</body>
+</html>
