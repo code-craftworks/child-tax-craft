@@ -732,10 +732,13 @@ function buildHTML(){
   '<div style="margin-bottom:22px">'+
     '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px">'+
       '<h1 style="font-size:21px;font-weight:800;color:#18181B;letter-spacing:-.025em">자녀 증여세 관리</h1>'+
-      '<div style="display:flex;align-items:center;gap:5px">'+
+      '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">'+
         '<button id="btn-font-minus" class="btn-sm" style="padding:4px 10px;font-size:14px;font-weight:700;line-height:1">A−</button>'+
         '<span style="font-size:11px;color:#A1A1AA;min-width:36px;text-align:center;font-variant-numeric:tabular-nums">'+Math.round(fontZoom*100)+'%</span>'+
         '<button id="btn-font-plus" class="btn-sm" style="padding:4px 10px;font-size:14px;font-weight:700;line-height:1">A+</button>'+
+        '<span style="color:#E5E7EB;font-size:13px;margin:0 2px">|</span>'+
+        '<button id="btn-export" class="btn-sm" title="현재 데이터를 JSON 파일로 저장">↓ 백업</button>'+
+        '<label class="btn-sm" style="cursor:pointer;display:inline-flex;align-items:center" title="JSON 백업 파일에서 데이터 복원">↑ 복원<input type="file" id="f-import" accept=".json" style="display:none"/></label>'+
       '</div>'+
     '</div>'+
     '<p style="color:#71717A;font-size:12px;margin-bottom:8px">대한민국 상속세 및 증여세법 · 직계존속 그룹 10년 합산 · 비과세 한도: 미성년 2,000만 / 성년 5,000만 원</p>'+
@@ -975,6 +978,61 @@ function bind(){
       }
     });})(tabBtns[ti2]);
   }
+
+  // 데이터 백업 (JSON 다운로드)
+  var bex=document.getElementById('btn-export');
+  if(bex)bex.addEventListener('click',function(){
+    var data=JSON.stringify({chartYS:chartYS,chartYE:chartYE,simDate:simDate,fontZoom:fontZoom,children:children,activeChildIdx:activeChildIdx},null,2);
+    var blob=new Blob([data],{type:'application/json'});
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='cgb-backup-'+simDate+'.json';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    bex.textContent='✓ 저장됨';
+    setTimeout(function(){bex.textContent='↓ 백업';},1800);
+  });
+
+  // 데이터 복원 (JSON 업로드)
+  var fim=document.getElementById('f-import');
+  if(fim)fim.addEventListener('change',function(){
+    var file=fim.files[0];
+    if(!file)return;
+    var reader=new FileReader();
+    reader.onload=function(e){
+      try{
+        var s=JSON.parse(e.target.result);
+        if(s.chartYS>=1990&&s.chartYS<=2025)chartYS=s.chartYS;
+        if(s.chartYE>=2030&&s.chartYE<=2060)chartYE=s.chartYE;
+        if(isValidDate(s.simDate,1990,2060))simDate=s.simDate;
+        if(typeof s.fontZoom==='number'&&s.fontZoom>=0.7&&s.fontZoom<=1.5)fontZoom=s.fontZoom;
+        if(Array.isArray(s.children)&&s.children.length>0){
+          var loaded=[];
+          for(var ci=0;ci<s.children.length;ci++){
+            var sc=s.children[ci];if(!sc)continue;
+            var nc={id:sc.id||uid(),name:sc.name||('자녀 '+(ci+1)),
+              birthDate:isValidDate(sc.birthDate,1940,2025)?sc.birthDate:'',
+              specialEvents:{marriage:null,birth:null},gifts:[]};
+            if(sc.specialEvents){
+              var sm=sc.specialEvents.marriage,sb=sc.specialEvents.birth;
+              if(sm&&isValidDate(sm.date,1990,2060)&&typeof sm.amount==='number')nc.specialEvents.marriage=sm;
+              if(sb&&isValidDate(sb.date,1990,2060)&&typeof sb.amount==='number')nc.specialEvents.birth=sb;
+            }
+            if(Array.isArray(sc.gifts)){
+              nc.gifts=sc.gifts.filter(function(g){return g.id&&g.title&&g.date&&typeof g.amount==='number'&&g.amount>0;});
+            }
+            loaded.push(nc);
+          }
+          if(loaded.length){children=loaded;}
+        }
+        if(typeof s.activeChildIdx==='number'&&s.activeChildIdx>=0&&s.activeChildIdx<children.length)
+          activeChildIdx=s.activeChildIdx;
+        render();
+      }catch(err){window.alert('파일을 읽을 수 없습니다. 올바른 백업 파일인지 확인해 주세요.');}
+    };
+    reader.readAsText(file,'utf-8');
+    fim.value='';
+  });
 
   // 자녀 추가
   var bac=document.getElementById('btn-add-child');
